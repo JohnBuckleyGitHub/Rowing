@@ -5,16 +5,30 @@ import copy
 
 
 class boat(object):
-    def __init__(self, count):
-        self.mass_rowers = 92.5 * count
-        self.mass_boat = 18.25 * count
-        self.mass = 92.5 * count + 146
-        self.res_alpha = 4 + .75 * count  # N s²/m²
-        self.oar = oar(self, 8, 'coppel')
+    def __init__(self, count=1):
+        if count > 1:
+            self.parameters_multi(count)
+        else:
+            self.parameters_single()
+        # self.oar = oar(self, 8, 'coppel')
         self.stroke_rate = 30
         self.dist_last = 0
         self.pull_time = 0
         self.__init_record_params__()
+
+    def parameters_single(self):
+        self.mass_rowers = 90
+        self.mass_boat = 14
+        self.mass = self.mass_rowers + self.mass_boat
+        self.res_alpha = 3.4
+        self.oar = oar(self, 1, 'coppel', .143, 0.5, blade_arm_length=2)
+
+    def parameters_multi(self, count=8):
+        self.mass_rowers = 92.5 * count
+        self.mass_boat = 18.25 * count
+        self.mass = 92.5 * count + 146
+        self.res_alpha = 4 + .75 * count  # N s²/m²
+        self.oar = oar(self, 8, 'coppel', .124, 0.5)
 
     def recover(self, duration, fractions):
         t_step = duration / fractions
@@ -28,7 +42,7 @@ class boat(object):
               "{:10.2f}".format(self.speed), "{:10.2f}".format(self.acc))
 
     def __init_record_params__(self):
-        self.speed = 6
+        self.speed = 4
         self.pos = 0
         self.time = 0
         self.record = []
@@ -64,7 +78,7 @@ class boat(object):
     def single_stroke(self, start_angle, end_angle):
         self.start_angle = d2r(start_angle, True)
         self.end_angle = d2r(end_angle, True)
-        self.pull_force = 400
+        self.pull_force = 100
         self.max_vel_diff = .01
         self.min_ang_step = d2r(.001)
         self.max_ang_step = d2r(.5)
@@ -130,15 +144,28 @@ class rower(object):
 
 
 class oar(object):
-    def __init__(self, boat, oar_count, oar_coeffs):
+    def __init__(self, boat, oar_count, oar_coeffs, oar_area, ratio, blade_arm_length=None, oar_length=3.81):
         self.boat = boat
         self.count = oar_count
-        self.dims()
+        self.blade_area = oar_area * self.count
+        self.ratio = ratio
+        self.dims(blade_arm_length, oar_length)
         self.__init_params__()
         self.__init_coeff__(oar_coeffs)
         self.calc_alpha()
-        # self.oar_cn = 20
-        # self.calc_alpha()
+
+    def dims(self, blade_arm_length, oar_length):
+        self.mass = 2.5 * self.count
+        # self.blade_area = oar_area * self.count
+        # self.ratio = ratio
+        self.handle_length = 0.1
+        self.blade_length = .5
+        if blade_arm_length:
+            self.length = blade_arm_length * (1 + self.ratio) + (self.handle_length + self.blade_length)/2
+        else:
+            self.length = oar_length
+        self.blade_mass = .5
+        self.calc_shaft_properties()
 
     def __init_params__(self):
         self.ang = None
@@ -176,20 +203,13 @@ class oar(object):
         print_params = ["{:.3f}".format(p) for p in self.state_params]
         return print_params
 
-    def dims(self):
-        self.mass = 2.5 * self.count
-        self.blade_area = .124 * self.count
-        self.length = 3.81
-        self.handle = 0.1
-        self.ratio = .5
-        self.blade_length = .5
-        self.blade_mass = .5
-        self.calc_shaft_properties()
-
     def calc_shaft_properties(self):
-        self.effec_length = (self.length - (self.handle + self.blade_length)/2)
+        self.effec_length = self.length - (self.handle_length + self.blade_length)/2
         self.handle_arm = self.ratio * self.effec_length / (1 + self.ratio)
         self.blade_arm = self.effec_length - self.handle_arm
+        self.calc_inertia()
+
+    def calc_inertia(self):
         shaft_mass = self.mass - self.blade_mass
         handle_arm_mass = shaft_mass/(1 + self.ratio)
         blade_arm_mass = shaft_mass/(1 - self.ratio)
